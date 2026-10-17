@@ -126,6 +126,9 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 			return nil, fmt.Errorf("%s does not support reasoning effort %q; use low, medium, high, xhigh or max", req.Model, effort)
 		}
 		out.Thinking = &AnthropicThinking{Type: "adaptive"}
+		if isOpus55 {
+			out.Thinking.Display = "summarized"
+		}
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
 		return out, nil
 	}

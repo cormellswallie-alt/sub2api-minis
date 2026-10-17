@@ -42,6 +42,10 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	}
 	originalModel := ccReq.Model
 	clientStream := ccReq.Stream
+	if dropped, stripped := sanitizeChatHistoryForAnthropic(&ccReq); dropped > 0 || stripped > 0 {
+		logger.L().Debug("forward_as_cc: sanitized assistant history",
+			zap.Int("reasoning_dropped", dropped), zap.Int("prefix_stripped", stripped))
+	}
 
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
 	responsesReq, err := apicompat.ChatCompletionsToResponses(&ccReq)
@@ -78,9 +82,23 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
 	}
 
+	if trimmed, terr := trimTrailingAssistantMessages(anthropicReq); terr != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", terr.Error())
+		return nil, terr
+	} else if trimmed > 0 {
+		logger.L().Info("forward_as_cc: trimmed trailing assistant messages", zap.Int("count", trimmed))
+	}
+
 	// 3. Force upstream streaming
 	anthropicReq.Stream = true
 	reqStream := true
+
+	// Idle compaction: replace an already-summarised prefix of this
+	// conversation with its summary (no-op unless enabled via env).
+	var idleTicket *idleCompactionTicket
+	if idleComp := idleCompactorFor(s); idleComp != nil && account.Platform == PlatformAnthropic {
+		idleTicket = idleComp.prepare(c, anthropicReq)
+	}
 
 	logger.L().Debug("gateway forward_as_chat_completions: model mapping applied",
 		zap.Int64("account_id", account.ID),
@@ -105,6 +123,19 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
+	}
+
+	// 6b. Honor the 1h cache TTL setting on the Chat Completions bridge.
+	if chatCompletionsCacheTTL1hAllowed() && s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
+		anthropicBody = injectAnthropicCacheControlTTL1h(anthropicBody)
+	}
+
+	if chatEagerToolStreamingEnabled() {
+		var eagerN int
+		anthropicBody, eagerN = injectEagerToolInputStreaming(anthropicBody)
+		if eagerN > 0 {
+			logger.L().Debug("forward_as_cc: eager tool input streaming", zap.Int("tools", eagerN))
+		}
 	}
 
 	// 7. Enforce cache_control block limit
@@ -192,6 +223,10 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
 	}
 
+	if handleErr == nil && idleTicket != nil {
+		idleCompactorFor(s).record(idleTicket, c, upstreamReq, forwardedBody, account, proxyURL, tokenType, startTime, result)
+	}
+
 	return result, handleErr
 }
 
@@ -237,6 +272,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	var finalResp *apicompat.AnthropicResponse
+	var refusalCategory string
 	var usage ClaudeUsage
 
 	for scanner.Scan() {
@@ -258,6 +294,10 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
+		}
+
+		if event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason == "refusal" {
+			refusalCategory = refusalCategoryFromPayload(payload)
 		}
 
 		// message_start carries the initial response structure and cache usage
@@ -316,6 +356,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 			CacheReadInputTokens:     usage.CacheReadInputTokens,
 		}
 	}
+
+	applyRefusalNoticeToResponse(finalResp, refusalCategory, requestID)
 
 	// Chain: Anthropic → Responses → Chat Completions
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
@@ -381,6 +423,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	var refusals chatRefusalTracker
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -486,6 +529,13 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		// The intermediate Responses converter synthesizes usage even when absent.
 		ccState.IncludeUsage = ccState.IncludeUsage || anthropicChatStreamHasUsage(&event, payload)
 
+		refusals.observe(&event)
+		for _, extra := range refusals.rewrite(&event, payload, requestID) {
+			extra := extra
+			if processAnthropicEvent(&extra) {
+				return resultWithUsage(), nil
+			}
+		}
 		if processAnthropicEvent(&event) {
 			return resultWithUsage(), nil
 		}
