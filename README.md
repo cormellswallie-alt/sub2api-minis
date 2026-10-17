@@ -1,3 +1,5 @@
+> **Minis 修改版**：fork 自 [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api) v0.2.16（`01842576`），修复 OpenAI Chat Completions → Claude Opus 5.5 链路的缓存 TTL、思维链泄漏、prefill 400、refusal 空回复和工具参数实时流式，并附带可选的空闲压缩。改动说明见 [MINIS_CHANGES.md](MINIS_CHANGES.md)；以下为上游原始 README。
+
 <div align="center">
 
 <img src="assets/logo.svg" alt="Sub2API Logo" width="128" />
