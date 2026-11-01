@@ -124,11 +124,11 @@ func defaultFingerprint() Fingerprint {
 	return Fingerprint{
 		UserAgent:               claude.DefaultUserAgent(),
 		StainlessLang:           "js",
-		StainlessPackageVersion: "0.94.0",
+		StainlessPackageVersion: "0.98.0",
 		StainlessOS:             "Linux",
 		StainlessArch:           "arm64",
 		StainlessRuntime:        "node",
-		StainlessRuntimeVersion: "v24.3.0",
+		StainlessRuntimeVersion: "v24.11.0",
 	}
 }
 
@@ -393,7 +393,7 @@ func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUI
 	sessionTail := parsed.SessionID // 原始session UUID
 
 	// 生成新的session hash: SHA256(accountID::sessionTail) -> UUID格式
-	seed := fmt.Sprintf("%d::%s", accountID, sessionTail)
+	seed := fmt.Sprintf("mns-rw1:%d::%s", accountID, sessionTail)
 	newSessionHash := generateUUIDFromSeed(seed)
 
 	// 根据客户端版本选择输出格式

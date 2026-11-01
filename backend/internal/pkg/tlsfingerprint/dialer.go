@@ -60,59 +60,53 @@ var (
 	// defaultCipherSuites contains the 17 cipher suites from Node.js 24.x
 	// Order is critical for JA3 fingerprint matching
 	defaultCipherSuites = []uint16{
-		// TLS 1.3 cipher suites
-		0x1301, // TLS_AES_128_GCM_SHA256
+		// TLS 1.3 cipher suites (Node/OpenSSL modern preference order)
 		0x1302, // TLS_AES_256_GCM_SHA384
 		0x1303, // TLS_CHACHA20_POLY1305_SHA256
+		0x1301, // TLS_AES_128_GCM_SHA256
 
-		// ECDHE + AES-GCM
+		// TLS 1.2 ECDHE + AEAD
 		0xc02b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
 		0xc02f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+		0xcca9, // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+		0xcca8, // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 		0xc02c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
 		0xc030, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 
-		// ECDHE + ChaCha20-Poly1305
-		0xcca9, // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-		0xcca8, // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-
-		// ECDHE + AES-CBC-SHA (legacy fallback)
+		// ECDHE + AES-CBC-SHA
 		0xc009, // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
 		0xc013, // TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
 		0xc00a, // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
 		0xc014, // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
 
-		// RSA + AES-GCM (non-PFS)
+		// RSA fallback
 		0x009c, // TLS_RSA_WITH_AES_128_GCM_SHA256
 		0x009d, // TLS_RSA_WITH_AES_256_GCM_SHA384
-
-		// RSA + AES-CBC-SHA (non-PFS, legacy)
 		0x002f, // TLS_RSA_WITH_AES_128_CBC_SHA
 		0x0035, // TLS_RSA_WITH_AES_256_CBC_SHA
 	}
 
-	// defaultCurves contains the 3 supported groups from Node.js 24.x
 	defaultCurves = []utls.CurveID{
 		utls.X25519,    // 0x001d
 		utls.CurveP256, // 0x0017 (secp256r1)
 		utls.CurveP384, // 0x0018 (secp384r1)
+		utls.CurveP521, // 0x0019 (secp521r1)
 	}
 
-	// defaultPointFormats contains point formats from Node.js 24.x
 	defaultPointFormats = []uint16{
 		0, // uncompressed
 	}
 
-	// defaultSignatureAlgorithms contains the 9 signature algorithms from Node.js 24.x
 	defaultSignatureAlgorithms = []utls.SignatureScheme{
 		0x0403, // ecdsa_secp256r1_sha256
-		0x0804, // rsa_pss_rsae_sha256
-		0x0401, // rsa_pkcs1_sha256
 		0x0503, // ecdsa_secp384r1_sha384
+		0x0603, // ecdsa_secp521r1_sha512
+		0x0804, // rsa_pss_rsae_sha256
 		0x0805, // rsa_pss_rsae_sha384
-		0x0501, // rsa_pkcs1_sha384
 		0x0806, // rsa_pss_rsae_sha512
+		0x0401, // rsa_pkcs1_sha256
+		0x0501, // rsa_pkcs1_sha384
 		0x0601, // rsa_pkcs1_sha512
-		0x0201, // rsa_pkcs1_sha1
 	}
 )
 
@@ -311,19 +305,18 @@ func toUTLSCurves(curves []uint16) []utls.CurveID {
 // Used when Profile.Extensions is empty.
 var defaultExtensionOrder = []uint16{
 	0,     // server_name
-	65037, // encrypted_client_hello
-	23,    // extended_master_secret
-	65281, // renegotiation_info
-	10,    // supported_groups
 	11,    // ec_point_formats
+	10,    // supported_groups
 	35,    // session_ticket
 	16,    // alpn
 	5,     // status_request
+	23,    // extended_master_secret
+	65281, // renegotiation_info
 	13,    // signature_algorithms
 	18,    // signed_certificate_timestamp
-	51,    // key_share
-	45,    // psk_key_exchange_modes
 	43,    // supported_versions
+	45,    // psk_key_exchange_modes
+	51,    // key_share
 }
 
 // isGREASEValue checks if a uint16 value matches the TLS GREASE pattern (0x?a?a).

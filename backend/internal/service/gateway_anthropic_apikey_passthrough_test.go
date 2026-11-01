@@ -1077,7 +1077,7 @@ func TestGatewayService_AnthropicOAuth_SystemPromptInjectionCanBeDisabled(t *tes
 	require.True(t, system.Exists())
 	require.Equal(t, "Original system prompt", system.String())
 	require.NotContains(t, string(upstream.lastBody), "x-anthropic-billing-header:")
-	require.NotContains(t, string(upstream.lastBody), "[System Instructions]")
+	require.NotContains(t, string(upstream.lastBody), "<context_configuration>")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingStillCollectsUsageAfterClientDisconnect(t *testing.T) {

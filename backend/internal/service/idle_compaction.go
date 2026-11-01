@@ -174,19 +174,19 @@ type idleCompactionTicket struct {
 }
 
 type idleCompactionSnapshot struct {
-	ticket      *idleCompactionTicket
-	url         string
-	header      http.Header
-	body        []byte
-	account     *Account
-	proxyURL    string
-	tokenType   string
-	toolRewrite *ToolNameRewrite
-	startedAt   time.Time
-	cacheTTL    time.Duration
-	totalTokens int
-	timer       *time.Timer
-	cancel      context.CancelFunc
+	ticket       *idleCompactionTicket
+	url          string
+	header       http.Header
+	body         []byte
+	account      *Account
+	proxyURL     string
+	tokenType    string
+	toolRewrite  *ToolNameRewrite
+	startedAt    time.Time
+	cacheTTL     time.Duration
+	totalTokens  int
+	timer        *time.Timer
+	cancel       context.CancelFunc
 }
 
 type idleCompactionSendFunc func(ctx context.Context, snap *idleCompactionSnapshot, body []byte) (*http.Response, error)

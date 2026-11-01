@@ -13,7 +13,7 @@ import (
 
 func TestBuildDynamicToolMap_BelowThreshold(t *testing.T) {
 	// Parrot 行为：tools 数量 ≤ 5 时不做动态映射。
-	names := []string{"bash", "edit", "read", "write", "search"}
+	names := []string{"bash", "edit", "read", "write"}
 	require.Nil(t, buildDynamicToolMap(names))
 }
 
@@ -287,7 +287,7 @@ func TestBuildDynamicToolMap_FakeNameShape(t *testing.T) {
 		require.True(t, ok)
 		// fake = prefix + head3 + "%02d"
 		// ends with two decimal digits
-		require.Regexp(t, `^[a-z]+_[a-z0-9]{1,3}\d{2}$`, fake)
+		require.Regexp(t, `^[a-z]+_[a-z0-9]{1,4}_[0-9a-f]+$`, fake)
 		head := name
 		if len(head) > 3 {
 			head = head[:3]

@@ -42,10 +42,16 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	}
 	originalModel := ccReq.Model
 	clientStream := ccReq.Stream
+	var chatSigRefs []chatSigRef
+	if chatSignedThinkingEnabled() && s.cache != nil {
+		chatSigRefs = lookupChatSignedThinking(ctx, s.cache, &ccReq)
+	}
 	if dropped, stripped := sanitizeChatHistoryForAnthropic(&ccReq); dropped > 0 || stripped > 0 {
 		logger.L().Debug("forward_as_cc: sanitized assistant history",
 			zap.Int("reasoning_dropped", dropped), zap.Int("prefix_stripped", stripped))
 	}
+
+	chatSigTextN := applyChatThinkingTextFallback(&ccReq, chatSigRefs)
 
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
 	responsesReq, err := apicompat.ChatCompletionsToResponses(&ccReq)
@@ -87,6 +93,14 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, terr
 	} else if trimmed > 0 {
 		logger.L().Info("forward_as_cc: trimmed trailing assistant messages", zap.Int("count", trimmed))
+	}
+
+	chatSigRestored := restoreChatSignedThinking(anthropicReq, &ccReq, chatSigRefs)
+	if len(chatSigRefs) > 0 {
+		sigHits, sigMisses := chatSigRefStats(chatSigRefs)
+		logger.L().Info("forward_as_cc: thinking passback",
+			zap.Int("signed_hits", sigHits), zap.Int("restored", chatSigRestored),
+			zap.Int("misses", sigMisses), zap.Int("text_fallback", chatSigTextN))
 	}
 
 	// 3. Force upstream streaming
@@ -177,6 +191,30 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// 12a. A replayed signature was rejected: retry once without thinking history.
+	if resp.StatusCode == http.StatusBadRequest && chatSigRestored > 0 {
+		sigErrBody, _ := s.readUpstreamErrorBody(resp)
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(sigErrBody))
+		if s.isThinkingBlockSignatureError(sigErrBody) {
+			strippedBody, removed := stripAnthropicThinkingBlocks(anthropicBody)
+			logger.L().Warn("forward_as_cc: signed thinking rejected, retrying without it",
+				zap.Int("removed_blocks", removed))
+			retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+			retryReq, retryBody, rerr := s.buildUpstreamRequest(retryCtx, c, account, strippedBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
+			releaseRetryCtx()
+			if rerr == nil {
+				retryResp, derr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+				if derr == nil && retryResp != nil {
+					_ = resp.Body.Close()
+					resp, upstreamReq, forwardedBody = retryResp, retryReq, retryBody
+				} else if retryResp != nil && retryResp.Body != nil {
+					_ = retryResp.Body.Close()
+				}
+			}
+		}
+	}
+
 	// 12. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, _ := s.readUpstreamErrorBody(resp)
@@ -212,6 +250,8 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		writeGatewayCCError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
+
+	s.attachChatSigTracker(c, originalModel)
 
 	// 13. Handle normal response
 	// Read Anthropic SSE → convert to Responses events → convert to CC format
@@ -299,6 +339,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		if event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason == "refusal" {
 			refusalCategory = refusalCategoryFromPayload(payload)
 		}
+
+		s.observeChatSig(c, &event)
 
 		// message_start carries the initial response structure and cache usage
 		if event.Type == "message_start" && event.Message != nil {
@@ -530,6 +572,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		ccState.IncludeUsage = ccState.IncludeUsage || anthropicChatStreamHasUsage(&event, payload)
 
 		refusals.observe(&event)
+		s.observeChatSig(c, &event)
 		for _, extra := range refusals.rewrite(&event, payload, requestID) {
 			extra := extra
 			if processAnthropicEvent(&extra) {

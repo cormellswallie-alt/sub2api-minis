@@ -346,7 +346,7 @@ func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account
 	// 不复用 GenerateSessionHash —— 后者是粘性路由键、按设计逐轮变化（见其测试）。
 	var firstUserText string
 	if parsed.Body != nil {
-		firstUserText = extractFirstUserText(parsed.Body.Bytes())
+		firstUserText = extractSessionAnchorUserText(parsed.Body.Bytes())
 	}
 	seed := buildStableSessionSeed(account.ID, sessionContextDiscriminator(parsed.SessionContext), firstUserText)
 	sessionID := generateSessionUUID(seed)
@@ -470,7 +470,7 @@ func (s *GatewayService) buildOAuthMetadataUserIDFromBody(
 	if fp != nil {
 		clientDiscriminator = fp.ClientID
 	}
-	seed := buildStableSessionSeed(account.ID, clientDiscriminator, extractFirstUserText(body))
+	seed := buildStableSessionSeed(account.ID, clientDiscriminator, extractSessionAnchorUserText(body))
 	sessionID := generateSessionUUID(seed)
 
 	var uaVersion string
@@ -489,8 +489,44 @@ func (s *GatewayService) buildOAuthMetadataUserIDFromBody(
 //
 // 注意：粘性路由键 GenerateSessionHash 按设计逐轮变化（见其测试），本函数与之独立、互不影响。
 // accountID 恒存在，故 seed 永不为空 —— 输出始终是确定性 UUID，而非随机值。
+func extractSessionAnchorUserText(body []byte) string {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return ""
+	}
+	first := ""
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		if msg.Get("role").String() != "user" {
+			return true
+		}
+		text := ""
+		content := msg.Get("content")
+		if content.Type == gjson.String {
+			text = content.String()
+		} else if content.IsArray() {
+			content.ForEach(func(_, block gjson.Result) bool {
+				if block.Get("type").String() == "text" {
+					text = block.Get("text").String()
+					return false
+				}
+				return true
+			})
+		}
+		if first == "" {
+			first = text
+		}
+		if strings.HasPrefix(text, "<context_configuration>\n") {
+			return true
+		}
+		first = text
+		return false
+	})
+	return first
+}
+
 func buildStableSessionSeed(accountID int64, clientDiscriminator, firstUserText string) string {
 	var b strings.Builder
+	_, _ = b.WriteString("mns-v1:")
 	_, _ = b.WriteString(strconv.FormatInt(accountID, 10))
 	_, _ = b.WriteString("::")
 	_, _ = b.WriteString(clientDiscriminator)
@@ -947,7 +983,7 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 	if originalSystemText != "" && originalSystemText != ccPromptTrimmed && !hasClaudeCodePrefix(originalSystemText) {
 		instructionBlock := map[string]any{
 			"type": "text",
-			"text": "[System Instructions]\n" + originalSystemText,
+			"text": "<context_configuration>\n" + originalSystemText + "\n</context_configuration>",
 		}
 		if originalSystemCacheControl != nil {
 			instructionBlock["cache_control"] = originalSystemCacheControl
@@ -961,7 +997,7 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 		ackMsg, err2 := json.Marshal(map[string]any{
 			"role": "assistant",
 			"content": []map[string]any{
-				{"type": "text", "text": "Understood. I will follow these instructions."},
+				{"type": "text", "text": "Configuration loaded."},
 			},
 		})
 		if err1 != nil || err2 != nil {

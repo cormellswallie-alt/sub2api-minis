@@ -178,6 +178,9 @@ func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsf
 	if account == nil || !account.IsTLSFingerprintEnabled() {
 		return nil
 	}
+	if s == nil {
+		return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}
+	}
 	id := account.GetTLSFingerprintProfileID()
 	if id > 0 {
 		if p := s.GetProfileByID(id); p != nil {

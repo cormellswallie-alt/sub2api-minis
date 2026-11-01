@@ -422,7 +422,7 @@ func TestApplyClaudeCodeOAuthMimicryToBody_FableOmitsRefusedExpansion(t *testing
 	require.Equal(t, claudeCodeSystemPrompt, system[1].Get("text").String())
 	require.NotContains(t, string(out), claudeCodeSystemPromptExpansion)
 	require.Contains(t, gjson.GetBytes(out, "messages.0.content.0.text").String(), "Project instructions")
-	require.Equal(t, "Understood. I will follow these instructions.", gjson.GetBytes(out, "messages.1.content.0.text").String())
+	require.Equal(t, "Configuration loaded.", gjson.GetBytes(out, "messages.1.content.0.text").String())
 	require.Equal(t, "hello", gjson.GetBytes(out, "messages.2.content").String())
 }
 

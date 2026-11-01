@@ -336,8 +336,8 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  3, // instruction + ack + original
 			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nYou are a personal assistant running inside OpenClaw.",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			wantFirstMsgText: "<context_configuration>\nYou are a personal assistant running inside OpenClaw.\n</context_configuration>",
+			wantAckMsgText:   "Configuration loaded.",
 		},
 		{
 			name:            "system equals Claude Code prompt - no messages injected",
@@ -356,8 +356,8 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  3,
 			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nFirst instruction\n\nSecond instruction",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			wantFirstMsgText: "<context_configuration>\nFirst instruction\n\nSecond instruction\n</context_configuration>",
+			wantAckMsgText:   "Configuration loaded.",
 		},
 		{
 			name:            "empty array system - no messages injected",
@@ -373,8 +373,8 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  3,
 			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nCustom prompt",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			wantFirstMsgText: "<context_configuration>\nCustom prompt\n</context_configuration>",
+			wantAckMsgText:   "Configuration loaded.",
 		},
 		{
 			name:            "json.RawMessage nil system",
@@ -390,8 +390,8 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  5, // 2 injected + 3 original
 			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nBe helpful",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			wantFirstMsgText: "<context_configuration>\nBe helpful\n</context_configuration>",
+			wantAckMsgText:   "Configuration loaded.",
 		},
 	}
 
@@ -494,7 +494,7 @@ func TestRewriteSystemForNonClaudeCode_PreservesSystemCacheControlOnMigratedMess
 
 	result := rewriteSystemForNonClaudeCode(body, system)
 
-	require.Equal(t, "[System Instructions]\nStable project instructions", gjson.GetBytes(result, "messages.0.content.0.text").String())
+	require.Equal(t, "<context_configuration>\nStable project instructions\n</context_configuration>", gjson.GetBytes(result, "messages.0.content.0.text").String())
 	require.Equal(t, "ephemeral", gjson.GetBytes(result, "messages.0.content.0.cache_control.type").String())
 	require.Equal(t, "1h", gjson.GetBytes(result, "messages.0.content.0.cache_control.ttl").String())
 }

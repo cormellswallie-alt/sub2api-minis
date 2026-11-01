@@ -69,6 +69,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	// Minis: "<model>-search" alias -> real model + web_search tool.
+	if rewritten, ok := service.RewriteChatSearchAliasBody(body); ok {
+		body = rewritten
+	}
+
 	// Extract model and stream
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {

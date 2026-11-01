@@ -162,6 +162,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	setOpsRequestContext(c, "", false)
 
+	// Minis: "<model>-search" alias -> real model + web_search server tool.
+	if rewritten, ok := service.RewriteMessagesSearchAliasBody(body); ok {
+		body = rewritten
+	}
+
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
@@ -2171,6 +2176,11 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
+
+	// Minis: "<model>-search" alias -> real model + web_search server tool.
+	if rewritten, ok := service.RewriteMessagesSearchAliasBody(body); ok {
+		body = rewritten
+	}
 
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)

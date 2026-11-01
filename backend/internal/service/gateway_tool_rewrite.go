@@ -25,18 +25,15 @@ var staticToolNameRewrites = map[string]string{
 	"session_":  "cc_ses_",
 }
 
-// fakeToolNamePrefixes 是"动态映射"的前缀池，与 Parrot _FAKE_PREFIXES 一致。
-// 当 tools 数量 > dynamicToolMapThreshold 时随机选用其中前缀生成可读假名。
+// fakeToolNamePrefixes 是私有化后的动态工具名前缀池，避开公共反代默认特征。
 var fakeToolNamePrefixes = []string{
-	"analyze_", "compute_", "fetch_", "generate_", "lookup_", "modify_",
-	"process_", "query_", "render_", "resolve_", "sync_", "update_",
-	"validate_", "convert_", "extract_", "manage_", "monitor_", "parse_",
-	"review_", "search_", "transform_", "handle_", "invoke_", "notify_",
+	"dispatch_", "execute_", "inspect_", "collect_", "prepare_", "compile_",
+	"format_", "locate_", "verify_", "compose_", "route_", "emit_",
+	"acquire_", "derive_", "apply_", "record_", "select_", "filter_",
+	"combine_", "decode_", "encode_", "compare_", "expand_", "trace_",
 }
 
-// dynamicToolMapThreshold 与 Parrot 一致：tools 数量超过 5 才启用动态映射。
-// 少量工具不需要混淆（一般是 Claude Code 自己的核心工具 bash/edit/read 等）。
-const dynamicToolMapThreshold = 5
+const dynamicToolMapThreshold = 4
 
 // ToolNameRewrite 是单次请求内的工具名混淆映射。
 //   - Forward: real → fake，请求阶段在 body 上应用。
@@ -66,6 +63,7 @@ func buildDynamicToolMap(toolNames []string) map[string]string {
 		return nil
 	}
 	h := fnv.New64a()
+	_, _ = h.Write([]byte("mns-tool-v1:"))
 	for i, n := range toolNames {
 		if i > 0 {
 			_, _ = h.Write([]byte{0})
@@ -81,11 +79,18 @@ func buildDynamicToolMap(toolNames []string) map[string]string {
 	mapping := make(map[string]string, len(toolNames))
 	for i, name := range toolNames {
 		prefix := available[i%len(available)]
-		headLen := 3
-		if len(name) < 3 {
-			headLen = len(name)
+		clean := strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+				return r
+			}
+			return -1
+		}, name)
+		if len(clean) > 4 {
+			clean = clean[:4]
+		} else if clean == "" {
+			clean = "op"
 		}
-		fake := fmt.Sprintf("%s%s%02d", prefix, name[:headLen], i)
+		fake := fmt.Sprintf("%s%s_%x", prefix, strings.ToLower(clean), i+1)
 		mapping[name] = fake
 	}
 	return mapping
