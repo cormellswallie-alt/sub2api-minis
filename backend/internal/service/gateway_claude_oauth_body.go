@@ -56,11 +56,15 @@ func sanitizeSystemText(text string) string {
 	// Some clients include a fixed OpenCode identity sentence. Anthropic may treat
 	// this as a non-Claude-Code fingerprint, so rewrite it to the canonical
 	// Claude Code banner before generic "OpenCode"/"opencode" replacements.
-	text = strings.ReplaceAll(
-		text,
+	for _, banner := range []string{
 		"You are OpenCode, the best coding agent on the planet.",
-		strings.TrimSpace(claudeCodeSystemPrompt),
-	)
+		"You are Cursor, an AI coding assistant.",
+		"You are Cascade, an AI coding assistant created by Codeium.",
+		"You are Cline, a highly skilled software engineer",
+		"You are Roo, a highly skilled software engineer",
+	} {
+		text = strings.ReplaceAll(text, banner, strings.TrimSpace(claudeCodeSystemPrompt))
+	}
 	return text
 }
 
@@ -245,13 +249,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 		}
 	}
 
-	// 确保 tools 字段存在（即使为空数组）
-	if !gjson.GetBytes(out, "tools").Exists() {
-		if next, ok := setJSONRawBytes(out, "tools", []byte("[]")); ok {
-			out = next
-			modified = true
-		}
-	}
+	// 不再向无工具请求强塞空的 "tools": []（避免暴露公共反代固定形态）
 
 	if opts.injectMetadata && opts.metadataUserID != "" {
 		if next, changed := ensureClaudeOAuthMetadataUserID(out, opts.metadataUserID); changed {
@@ -260,11 +258,6 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 		}
 	}
 
-	// temperature：真实 Claude Code CLI 总是发送 temperature（默认 1，客户端可覆盖）。
-	// 之前的实现直接 delete 会导致 payload 缺字段，与真实 CLI 字节级不一致。
-	// 策略：客户端传了什么就透传；没传则补默认 1。
-	// 例外：采样锁定的模型（sonnet-5-5/haiku-5-5）上 temperature+top_p 共存即 400，
-	// 客户端只传 top_p 时不得再补 temperature，否则网关自己制造 400（issue #7919）。
 	samplingLocked := claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID)
 	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) &&
 		(!samplingLocked || !gjson.GetBytes(out, "top_p").Exists()) {
@@ -274,9 +267,9 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 		}
 	}
 
-	// max_tokens：真实 CLI 的默认值是 128000。缺失时补齐以对齐指纹。
+	// max_tokens：缺失时补齐私有默认值 64000，避开公共反代写死的 128000
 	if !gjson.GetBytes(out, "max_tokens").Exists() {
-		if next, ok := setJSONValueBytes(out, "max_tokens", 128000); ok {
+		if next, ok := setJSONValueBytes(out, "max_tokens", 64000); ok {
 			out = next
 			modified = true
 		}

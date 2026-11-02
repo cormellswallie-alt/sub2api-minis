@@ -132,6 +132,33 @@ func defaultFingerprint() Fingerprint {
 	}
 }
 
+var (
+	stainlessOSPool      = []string{"MacOS", "Linux"}
+	stainlessArchPool    = []string{"arm64", "x64"}
+	stainlessRuntimePool = []string{"v22.15.0", "v22.17.1", "v24.9.0", "v24.11.0"}
+	stainlessPkgPool     = []string{"0.96.0", "0.97.0", "0.98.0"}
+)
+
+func pickRandomPoolItem(pool []string, fallback string) string {
+	if len(pool) == 0 {
+		return fallback
+	}
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fallback
+	}
+	return pool[int(b[0])%len(pool)]
+}
+
+func randomDefaultFingerprint() Fingerprint {
+	df := defaultFingerprint()
+	df.StainlessOS = pickRandomPoolItem(stainlessOSPool, df.StainlessOS)
+	df.StainlessArch = pickRandomPoolItem(stainlessArchPool, df.StainlessArch)
+	df.StainlessRuntimeVersion = pickRandomPoolItem(stainlessRuntimePool, df.StainlessRuntimeVersion)
+	df.StainlessPackageVersion = pickRandomPoolItem(stainlessPkgPool, df.StainlessPackageVersion)
+	return df
+}
+
 // Fingerprint represents account fingerprint data
 type Fingerprint struct {
 	ClientID                string
@@ -278,8 +305,8 @@ func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fin
 		fp.UserAgent = defaultFingerprint().UserAgent
 	}
 
-	// 获取x-stainless-*头，如果没有则使用默认值
-	df := defaultFingerprint()
+	// 获取x-stainless-*头，如果没有则从私有候选池随机挑选（按账号持久化 7 天）
+	df := randomDefaultFingerprint()
 	fp.StainlessLang = getHeaderOrDefault(headers, "X-Stainless-Lang", df.StainlessLang)
 	fp.StainlessPackageVersion = getHeaderOrDefault(headers, "X-Stainless-Package-Version", df.StainlessPackageVersion)
 	fp.StainlessOS = getHeaderOrDefault(headers, "X-Stainless-OS", df.StainlessOS)

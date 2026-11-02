@@ -915,21 +915,26 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool, mimicUserAgen
 	if req == nil {
 		return
 	}
-	// Start with the standard defaults (fill missing).
+	// 保留账号级 Fingerprint 已写入的 X-Stainless-(OS/Arch/Runtime-Version/Package-Version)，
+	// 仅在缺失时用 DefaultHeaders 兜底，避免把所有账号强行覆盖成同一套静态常量。
 	applyClaudeOAuthHeaderDefaults(req)
-	// Then force key headers to match Claude Code fingerprint regardless of what the client sent.
-	// 使用 resolveWireCasing 确保 key 与真实 wire format 一致（如 "x-app" 而非 "X-App"）
-	for key, value := range claude.DefaultHeaders() {
-		if value == "" {
-			continue
+	for _, key := range []string{
+		"X-App",
+		"Anthropic-Dangerous-Direct-Browser-Access",
+		"X-Stainless-Retry-Count",
+		"X-Stainless-Timeout",
+		"X-Stainless-Lang",
+		"X-Stainless-Runtime",
+	} {
+		if value := claude.DefaultHeaders()[key]; value != "" {
+			setHeaderRaw(req.Header, resolveWireCasing(key), value)
 		}
-		if key == "User-Agent" {
-			// 版本号与 billing 路径共用同一字符串（见 mimicUserAgent 注释）。
-			value = mimicUserAgent
-		}
-		setHeaderRaw(req.Header, resolveWireCasing(key), value)
 	}
-	// Real Claude CLI uses Accept: application/json (even for streaming).
+	if mimicUserAgent != "" {
+		setHeaderRaw(req.Header, resolveWireCasing("User-Agent"), mimicUserAgent)
+	} else {
+		setHeaderRaw(req.Header, resolveWireCasing("User-Agent"), claude.DefaultUserAgent())
+	}
 	setHeaderRaw(req.Header, "Accept", "application/json")
 	if getHeaderRaw(req.Header, "accept-language") == "" {
 		setHeaderRaw(req.Header, "accept-language", "*")
@@ -940,8 +945,6 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool, mimicUserAgen
 	if isStream {
 		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
 	}
-	// Real Claude CLI 每个请求都会生成一个新的 UUID 放在 x-client-request-id。
-	// 上游会以此作为会话/请求指纹的一部分，缺失或重复都可能触发第三方判定。
 	if getHeaderRaw(req.Header, "x-client-request-id") == "" {
 		setHeaderRaw(req.Header, "x-client-request-id", uuid.NewString())
 	}

@@ -21,8 +21,8 @@ const toolNameRewriteKey = "claude_tool_name_rewrite"
 // staticToolNameRewrites 是"静态前缀映射"，与 Parrot src/transform/cc_mimicry.py
 // TOOL_NAME_REWRITES 完全一致。只有以这些前缀开头的工具会被重写。
 var staticToolNameRewrites = map[string]string{
-	"sessions_": "cc_sess_",
-	"session_":  "cc_ses_",
+	"sessions_": "wk_sess_",
+	"session_":  "wk_ses_",
 }
 
 // fakeToolNamePrefixes 是私有化后的动态工具名前缀池，避开公共反代默认特征。

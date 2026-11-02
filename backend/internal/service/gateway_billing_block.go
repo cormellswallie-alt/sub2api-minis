@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/tidwall/gjson"
 )
@@ -25,6 +26,10 @@ const fingerprintSalt = "59cf53e54c78"
 // 任何偏差都会导致 cc_version=X.Y.Z.{fp} 在上游侧与真实 CLI 不一致。
 func computeClaudeCodeFingerprint(body []byte, version string) string {
 	firstText := extractFirstUserText(body)
+	if strings.HasPrefix(firstText, "<context_configuration>\n") {
+		firstText = strings.TrimPrefix(firstText, "<context_configuration>\n")
+		firstText = strings.TrimSuffix(firstText, "\n</context_configuration>")
+	}
 	indices := []int{4, 7, 20}
 	chars := make([]byte, 0, 3)
 	for _, i := range indices {

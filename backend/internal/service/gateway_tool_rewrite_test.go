@@ -32,8 +32,8 @@ func TestBuildDynamicToolMap_AboveThresholdIsStable(t *testing.T) {
 }
 
 func TestSanitizeToolName_StaticPrefix(t *testing.T) {
-	require.Equal(t, "cc_sess_list", sanitizeToolName("sessions_list", nil))
-	require.Equal(t, "cc_ses_get", sanitizeToolName("session_get", nil))
+	require.Equal(t, "wk_sess_list", sanitizeToolName("sessions_list", nil))
+	require.Equal(t, "wk_ses_get", sanitizeToolName("session_get", nil))
 	require.Equal(t, "bash", sanitizeToolName("bash", nil))
 }
 
@@ -61,7 +61,7 @@ func TestRestoreToolNamesInBytes_LongestFirst(t *testing.T) {
 }
 
 func TestRestoreToolNamesInBytes_StaticPrefixRollback(t *testing.T) {
-	data := []byte(`{"name":"sessions_list","id":"cc_ses_xyz"}`)
+	data := []byte(`{"name":"sessions_list","id":"wk_ses_xyz"}`)
 	got := string(restoreToolNamesInBytes(data, nil))
 	require.Equal(t, `{"name":"sessions_list","id":"session_xyz"}`, got)
 }
@@ -78,12 +78,12 @@ func TestApplyToolNameRewriteToBody_RenamesToolsAndToolChoice(t *testing.T) {
 	out := applyToolNameRewriteToBody(body, rw)
 
 	// tools[0].name 和 tools[1].name 被改写，tools[2].name 保持不变
-	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tools.0.name").String())
-	require.Equal(t, "cc_ses_get", gjson.GetBytes(out, "tools.1.name").String())
+	require.Equal(t, "wk_sess_list", gjson.GetBytes(out, "tools.0.name").String())
+	require.Equal(t, "wk_ses_get", gjson.GetBytes(out, "tools.1.name").String())
 	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.2.name").String())
 
 	// tool_choice.name 被同步改写
-	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tool_choice.name").String())
+	require.Equal(t, "wk_sess_list", gjson.GetBytes(out, "tool_choice.name").String())
 	require.Equal(t, "tool", gjson.GetBytes(out, "tool_choice.type").String())
 }
 
@@ -94,16 +94,16 @@ func TestApplyToolNameRewriteToBody_RenamesToolUseInMessages(t *testing.T) {
 	body := []byte(`{"tools":[{"name":"sessions_list","input_schema":{}},{"name":"web_search","type":"web_search_20250305"}],"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]},{"role":"assistant","content":[{"type":"tool_use","id":"tu_01","name":"sessions_list","input":{}},{"type":"text","text":"thinking"}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_01","content":"ok"}]}]}`)
 	rw := buildToolNameRewriteFromBody(body)
 	require.NotNil(t, rw)
-	require.Equal(t, "cc_sess_list", rw.Forward["sessions_list"])
+	require.Equal(t, "wk_sess_list", rw.Forward["sessions_list"])
 
 	out := applyToolNameRewriteToBody(body, rw)
 
 	// tools[0].name 被改写
-	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tools.0.name").String())
+	require.Equal(t, "wk_sess_list", gjson.GetBytes(out, "tools.0.name").String())
 	// tools[1].name 是 server tool，保持不变
 	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.1.name").String())
 	// messages[1].content[0].name 是 tool_use，必须同步改写以匹配 tools[]
-	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "messages.1.content.0.name").String())
+	require.Equal(t, "wk_sess_list", gjson.GetBytes(out, "messages.1.content.0.name").String())
 	// messages[1].content[1] 是 text，保持不变
 	require.Equal(t, "thinking", gjson.GetBytes(out, "messages.1.content.1.text").String())
 	// messages[2].content[0] 是 tool_result，不包含 name 字段，保持不变
@@ -314,7 +314,7 @@ func TestApplyToolNameRewriteToBody_DuplicateNames(t *testing.T) {
 	body := []byte(`{"tools":[{"name":"sessions_first","name":"sessions_second"}],"messages":[{"content":[{"type":"tool_use","name":"sessions_first","name":"sessions_second"}]}]}`)
 	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
 	require.True(t, gjson.ValidBytes(out))
-	require.Equal(t, 2, strings.Count(string(out), `"name":"cc_sess_first","name":"sessions_second"`))
+	require.Equal(t, 2, strings.Count(string(out), `"name":"wk_sess_first","name":"sessions_second"`))
 }
 
 func TestApplyToolNameRewriteToBody_NonStringReferences(t *testing.T) {
@@ -345,7 +345,7 @@ func TestApplyToolNameRewriteToBody_LongHistory(t *testing.T) {
 	body := makeLongToolHistory()
 	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
 	require.True(t, gjson.ValidBytes(out))
-	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "messages.999.content.0.name").String())
+	require.Equal(t, "wk_sess_list", gjson.GetBytes(out, "messages.999.content.0.name").String())
 	require.Equal(t, "sessions_list", gjson.GetBytes(out, "messages.999.content.0.input.name").String())
 }
 
